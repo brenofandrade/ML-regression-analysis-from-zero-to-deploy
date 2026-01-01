@@ -22,7 +22,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 # -------------------------
 # 2. Configurações
 # -------------------------
-MODEL_PATH = Path("model_charges.joblib")
+MODEL_PATH = Path("models/model_charges.joblib")
 DATA_PATH = Path("dataset/insurance.csv")
 DEFAULT_HEIGHT_M = 1.70
 
@@ -99,6 +99,25 @@ class PatientInput(BaseModel):
     region: str     # southwest, southeast, northwest, northeast
 
 
+def _ensure_sklearn_backward_compatibility() -> None:
+    """
+    Some serialized models created with older scikit-learn versions expect the
+    private class `_RemainderColsList`, which was removed in newer releases.
+    If the attribute is missing, we register a tiny shim so `joblib.load`
+    can unpickle the pipeline without errors.
+    """
+    try:
+        import sklearn.compose._column_transformer as ct
+    except Exception:
+        return
+
+    if not hasattr(ct, "_RemainderColsList"):
+        class _RemainderColsList(list):
+            pass
+
+        ct._RemainderColsList = _RemainderColsList
+
+
 def load_model() -> None:
     global model
 
@@ -114,6 +133,7 @@ def load_model() -> None:
             )
 
     try:
+        _ensure_sklearn_backward_compatibility()
         model = joblib.load(MODEL_PATH)
     except FileNotFoundError as exc:
         raise RuntimeError(
